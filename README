@@ -1,0 +1,43 @@
+*****************************CONTENT**********************************
+Directories:
+	1. call-by-name: contains the implementation source
+	2. build: build directory
+	3. testcases: contains c programs for testing
+Files:
+	call-by-name/callByName.cpp: source implementation
+	check.sh: a script to check the source-to-source conversion
+		  for all testcases.
+
+
+ 
+********************************BUILD*********************************
+(1) Update the following paths based on your installation:
+	LLVM_SRC_PATH
+	LLVM_BUILD_PATH
+	LLVM_BIN_PATH
+
+	For Example:
+	LLVM_SRC_PATH := /home/panwar/work/compiler_project/llvm-project/
+	LLVM_BUILD_PATH := /home/panwar/work/compiler_project/llvm-project/build
+	LLVM_BIN_PATH 	:= $(LLVM_BUILD_PATH)/bin
+
+(2) Compile using "make"
+
+**********************************RUN*********************************
+Suppy a file name to run. For example:
+./build/callByName test.c
+
+This will generate an "output.c" file in current directory. The output
+file contains the transformed code that uses call-by-name calling convention
+for parameter passing.
+
+***************************TESTING ALL TESTCASES*********************
+Run the following commands:
+	1. chmod +x check.sh
+	2. check.sh
+
+This will execute code transformation, compile and run the output c code
+for all test cases.
+
+******************************CleanUp*********************************
+clean using "make clean"
