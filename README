@@ -34,7 +34,7 @@ for parameter passing.
 ***************************TESTING ALL TESTCASES*********************
 Run the following commands:
 	1. chmod +x check.sh
-	2. check.sh
+	2. ./check.sh
 
 This will execute code transformation, compile and run the output c code
 for all test cases.
