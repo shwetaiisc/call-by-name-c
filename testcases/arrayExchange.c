@@ -11,7 +11,11 @@ void swap(int a, int b)
 
 void exchange(int x, int y)
 {
+	int tmp;
 	swap(x, y);
+	//tmp = x;
+	//x = y;
+	//y = tmp;
 }
 
 int main()

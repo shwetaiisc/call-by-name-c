@@ -1,27 +1,23 @@
 #include <stdio.h>
 #include <stdlib.h>
+int iteration = 0;
 
-int fact(int n)
+void recur(int x)
 {
-	if (n == 0)
-		return 1;
+	if (x == 10) {
+		x = x + 100;
+		return;
+	}
 
 	int tmp;
-	int ans, var;
-
-	var = n;
-	tmp = n - 1;
-
-	ans = fact(tmp);
-	ans = ans * var;
-	return ans;
-}
+	tmp = x + 1;
+	x = x + 100;
+	recur(tmp);
+	printf("Local Variable: %d\n", tmp);
+}	
 
 int main()
 {
-	int x = 6;
-	int result;
-
-	result = fact(x);
-	printf("num = %d\nfactorial = %d\n", x, result);
+	int a = 0;
+	recur(a);
 }

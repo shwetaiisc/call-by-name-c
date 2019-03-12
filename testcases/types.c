@@ -16,9 +16,9 @@ int main()
 	int a = 1;
         float b = 2.5;
 	printf("Before:\na = %d\nb = %f\n", a, b);
-	compute(a, b, b+10);
-	printf("Middle:\na = %d\nb = %f\n", a, b);
-	compute(a, b, b*2 + 5 - 9 + 20);
+	//compute(a, b, b+10);
+	//printf("Middle:\na = %d\nb = %f\n", a, b);
+	compute(a, b, b * 2 + 5 - 9 + 20);
 	printf("After:\na = %d\nb = %f\n", a, b);
 	return 0;
 }

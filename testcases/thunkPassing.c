@@ -13,7 +13,7 @@ void foo(int x, int y)
 {
 	int a, b;
 	bar(x, y);
-	bar(y, x);
+	bar(x, y);
 	bar(x,y);
 }
 
