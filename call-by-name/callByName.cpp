@@ -24,10 +24,12 @@ using namespace std;
 
 int thunk_id = 0;
 bool headerFilesDone = false;
+bool isThunkParam = false;
 string currentRetType;
 map<string, bool> processedMap;
 map<string, string> thunkMap;
 map<string, string> typeMap;
+FunctionDecl *topFunc = NULL;
 
 bool insertProcessedEntry(string key)
 {
@@ -142,7 +144,7 @@ void rewriteExpressionForThunk(string &str, vector<string> operands)
 
 			string newString = operands[i];
 			if (!isConstant(operands[i]))
-				newString = "(*(ptr_thunk_" + to_string(thunk_id) + "->" + operands[i] + "))";
+				newString = "(*(ptr->" + operands[i] + "))";
 			str.replace(pos, operands[i].length(), newString);
 		}
 	}
@@ -157,7 +159,8 @@ void createThunkStruct(vector<string> operands, string &thunkStruct)
 		string type = typeMap.find(operands[i])->second;
 		thunkStruct += "\t" + type + "\t*" + operands[i] + ";\n";
 	}
-	thunkStruct += "} *ptr_thunk_" + to_string(thunk_id) +";\n\n";
+	//thunkStruct += "} *ptr_thunk_" + to_string(thunk_id) +";\n\n";
+	thunkStruct += "};\n\n";
 }
 
 int findArgumentIndex(FunctionDecl *f, string arg)
@@ -212,22 +215,26 @@ void createThunkForExpression(FunctionDecl *f, int index, Expr *expr, string str
 	currentRetType = returnType;
 	//thunkBody += "int gthunk_" + funcName + "_" + to_string(thunk_id);
 	thunkBody += returnType + "* gthunk_" + funcName + "_" + to_string(thunk_id);
-	thunkBody += "()\n{\n\t";
+	//thunkBody += "()\n{\n\t";
+	thunkBody += "(struct struct_thunk_" + to_string(thunk_id) + " *ptr)\n{\n\t";
 	rewriteExpressionForThunk(str, operands);
 	//thunkBody += "int tmp;\n\ttmp = " + str + ";\n\treturn tmp;\n}\n\n";
-	thunkBody += returnType + " tmp, *addr;\n\ttmp = " + str + ";\n\t";
+	thunkBody += returnType + " *addr;\n\t";
 	thunkBody += "addr = malloc(sizeof(" + returnType +"));\n\t";
 	thunkBody += "assert(addr != NULL);\n\t";
 	thunkBody += "*addr = " + str + ";\n\t";
 	thunkBody += "return addr;\n}\n\n";
 	//cout << thunkBody << "\n"; 
 	/* increment the global counter */
+	string thunkDecl = "struct struct_thunk_" + to_string(thunk_id) + " *ptr_thunk_" + to_string(thunk_id) + ";\n\t";
 	string thunkName = "ptr_thunk_"+ to_string(thunk_id);
-	thunkCaller = thunkName + " = malloc(sizeof(struct struct_thunk_" + to_string(thunk_id) + "));\n";
+	thunkCaller += thunkDecl;
+	thunkCaller += thunkName + " = malloc(sizeof(struct struct_thunk_" + to_string(thunk_id) + "));\n";
 	for (int i = 0; i < operands.size(); i++)
 		thunkCaller += "\t" + thunkName + "->" + operands[i] + " = &" + operands[i] + ";\n";
 
-	callString = ",gthunk_" + funcName + "_" + to_string(thunk_id);
+	callString = ", gthunk_" + funcName + "_" + to_string(thunk_id);
+	callString += ",  ptr_thunk_" + to_string(thunk_id);
 	thunkCaller += "\t";
 }
 
@@ -240,16 +247,17 @@ void createThunkForVariable(FunctionDecl *f, int index, Expr *expr, string str, 
 	createThunkStruct(operands, thunkStruct);
 	string returnType = getTypeFromOperands(operands);
 	currentRetType = returnType;
-	//thunkBody += "int* gthunk_" + funcName + "_" + to_string(thunk_id);
 	thunkBody += returnType + "* gthunk_" + funcName + "_" + to_string(thunk_id);
-	thunkBody += "()\n{\n\t";
+	thunkBody += "(struct struct_thunk_" + to_string(thunk_id) + " *ptr)\n{\n\t";
 	/* we should have just one operand here */
 	//rewriteExpressionForThunk(str, operands);
 	assert(operands.size() == 1);
-	str = "ptr_thunk_" + to_string(thunk_id) + "->" + operands[0] + ";\n";
+	str = "ptr->" + operands[0] + ";\n";
 	thunkBody += "return  " + str + "}\n\n";
-	string thunkName = "ptr_thunk_"+ to_string(thunk_id);
-	thunkCaller = thunkName + " = malloc(sizeof(struct struct_thunk_" + to_string(thunk_id) + "));\n";
+	string thunkDecl = "struct struct_thunk_" + to_string(thunk_id) + " *ptr_thunk_" + to_string(thunk_id) + ";\n\t";
+	string thunkName = "ptr_thunk_" + to_string(thunk_id);
+	thunkCaller += thunkDecl;
+	thunkCaller += thunkName + " = malloc(sizeof(struct struct_thunk_" + to_string(thunk_id) + "));\n";
 	for (int i = 0; i < operands.size(); i++)
 		thunkCaller += "\t" + thunkName + "->" + operands[i] + " = &" + operands[i] + ";\n";
 
@@ -257,10 +265,12 @@ void createThunkForVariable(FunctionDecl *f, int index, Expr *expr, string str, 
 
 	if (isLocalVariable(f, operands[0])) {
 		callString = ", gthunk_" + funcName + "_" + to_string(thunk_id);
+		callString += ",  ptr_thunk_" + to_string(thunk_id);
 	} else {
 		int pos = findArgumentIndex(f, operands[0]);
 		string funcName = f->getNameInfo().getName().getAsString();
 		callString = ", thunk_" + funcName + "_" + to_string(pos);
+		callString += ", strptr_" + to_string(pos);
 	}
 }
 
@@ -284,7 +294,7 @@ void insertThunkDefinition(FunctionDecl *f, int index, string thunk)
 	//if (findProcessedEntry(key))
 	//	return;
 
-	SourceRange sr = f->getSourceRange();
+	SourceRange sr = topFunc->getSourceRange();
 	SourceLocation loc = sr.getBegin();
 	TheRewriter.InsertTextBefore(loc, thunk);
 }
@@ -309,7 +319,7 @@ void updateCurrentRetType(FunctionDecl *f, string arg)
 	currentRetType = type;
 }
 
-void insertThunkCalleeDeclaration(FunctionDecl *f, Expr *expr, string arg, int index, bool isExpression)
+void insertThunkCalleeDeclaration(FunctionDecl *f, Expr *expr, string arg, int index, bool isExpression, int id)
 {
 	/* make sure we do not rewrite more than once */
 	string funcName = f->getNameInfo().getName().getAsString();
@@ -338,7 +348,15 @@ void insertThunkCalleeDeclaration(FunctionDecl *f, Expr *expr, string arg, int i
 	if (type.compare("") == 0)
 		type = "int";
 	currentRetType = type;
-	string str = ", " + currentRetType + "* thunk_" + funcName + "_" + to_string(index) + "()";
+	string str = ", " + currentRetType + "* thunk_" + funcName + "_" + to_string(index);
+	if (isThunkParam) {
+		str += "(struct struct_thunk_" + to_string(index) + " *)";
+		str += ", struct struct_thunk_" + to_string(index);
+	} else {
+		str += "(struct struct_thunk_" + to_string(index) + " *)";
+		str += ", struct struct_thunk_" + to_string(index);
+	}
+	str +=" *strptr_" + to_string(index);
 	SourceRange sr = namedDecl->getSourceRange();
 	SourceLocation loc = sr.getEnd();
 	TheRewriter.InsertTextAfterToken(loc, str);
@@ -613,7 +631,8 @@ void rewriteFunctionBodyAsThunk(FunctionDecl *f, int index, bool isExpression)
 		}
 		const NamedDecl *namedDecl = dyn_cast<NamedDecl>(par);
 		string src = namedDecl->getNameAsString();
-		string dst = "(*(thunk_" + funcName + "_" + to_string(index) + "()))";
+		string dst = "(*(thunk_" + funcName + "_" + to_string(index) + "(";
+		dst += "strptr_" + to_string(index) + ")))";
 		/*
  		if (isExpression)
 			dst = "(thunk_" + funcName + "_" + to_string(index) + "())";
@@ -722,16 +741,18 @@ void createThunkFromArrayExpression(FunctionDecl *f, int index, string arrName, 
 	string type = typeMap.find(arrName)->second;
 	currentRetType = type;
 	thunkBody += type + "* gthunk_" + funcName + "_" + to_string(thunk_id);
-	thunkBody += "()\n{\n\t";
+	thunkBody += "(struct struct_thunk_" + to_string(thunk_id) + "*ptr)\n{\n\t";
 	string str = arrArg;
 	rewriteExpressionForThunk(str, operands2);
-	thunkBody += "return ptr_thunk_" + to_string(thunk_id) + "->" + arrName + " + ";
+	thunkBody += "return ptr->" + arrName + " + ";
 	thunkBody += str + ";\n}\n\n";
 	//thunkBody += "int tmp;\n\ttmp = " + str + ";\n\treturn tmp;\n}\n\n";
 	//cout << thunkBody << "\n"; 
 	/* increment the global counter */
+	string thunkDecl = "struct struct_thunk_" + to_string(thunk_id) + " *ptr_thunk_" + to_string(thunk_id) + ";\n\t";
 	string thunkName = "ptr_thunk_"+ to_string(thunk_id);
-	thunkCaller = thunkName + " = malloc(sizeof(struct struct_thunk_" + to_string(thunk_id) + "));\n";
+	thunkCaller += thunkDecl;
+	thunkCaller += thunkName + " = malloc(sizeof(struct struct_thunk_" + to_string(thunk_id) + "));\n";
 	for (int i = 0; i < operands1.size(); i++) {
 		if (operands1[i].compare(arrName) != 0)
 			thunkCaller += "\t" + thunkName + "->" +
@@ -742,6 +763,7 @@ void createThunkFromArrayExpression(FunctionDecl *f, int index, string arrName, 
 	}
 
 	callString = ",gthunk_" + funcName + "_" + to_string(thunk_id);
+	callString += ",  ptr_thunk_" + to_string(thunk_id);
 	thunkCaller += "\t";
 	//cout << thunkBody << "\n";
 	//cout << thunkCaller << "\n";
@@ -759,14 +781,17 @@ void createThunkForStruct(FunctionDecl *f, int index, string var, string &thunkB
 	currentRetType = returnType;
 	//thunkBody += "int* gthunk_" + funcName + "_" + to_string(thunk_id);
 	thunkBody += returnType + "* gthunk_" + funcName + "_" + to_string(thunk_id);
-	thunkBody += "()\n{\n\t";
+	//thunkBody += "()\n{\n\t";
+	thunkBody += "(struct struct_thunk_" + to_string(thunk_id) + " *ptr)\n{\n\t";
 	/* we should have just one operand here */
 	//rewriteExpressionForThunk(str, operands);
 	assert(operands.size() == 1);
-	string str = "ptr_thunk_" + to_string(thunk_id) + "->" + operands[0] + ";\n";
+	string str = "ptr->" + operands[0] + ";\n";
 	thunkBody += "return  " + str + "}\n\n";
+	string thunkDecl = "struct struct_thunk_" + to_string(thunk_id) + " *ptr_thunk_" + to_string(thunk_id) + ";\n\t";
 	string thunkName = "ptr_thunk_"+ to_string(thunk_id);
-	thunkCaller = thunkName + " = malloc(sizeof(struct struct_thunk_" + to_string(thunk_id) + "));\n";
+	thunkCaller += thunkDecl;
+	thunkCaller += thunkName + " = malloc(sizeof(struct struct_thunk_" + to_string(thunk_id) + "));\n";
 	for (int i = 0; i < operands.size(); i++)
 		thunkCaller += "\t" + thunkName + "->" + operands[i] + " = &" + operands[i] + ";\n";
 
@@ -774,10 +799,12 @@ void createThunkForStruct(FunctionDecl *f, int index, string var, string &thunkB
 
 	if (isLocalVariable(f, operands[0])) {
 		callString = ", gthunk_" + funcName + "_" + to_string(thunk_id);
+		callString += ",  ptr_thunk_" + to_string(thunk_id);
 	} else {
 		int pos = findArgumentIndex(f, operands[0]);
 		string funcName = f->getNameInfo().getName().getAsString();
 		callString = ", thunk_" + funcName + "_" + to_string(pos);
+		callString += ", strptr_" + to_string(pos);
 	}
 }
 
@@ -820,7 +847,7 @@ void handleCallExpression(FunctionDecl *f, CallExpr *expr, Expr *insertLoc, bool
 			rewriteFunctionBodyAsThunk(callee, i, false);
 			loc = arg->getEndLoc();
 			TheRewriter.InsertTextAfterToken(loc, callString);
-			insertThunkCalleeDeclaration(callee, arg, str, i, false);
+			insertThunkCalleeDeclaration(callee, arg, str, i, false, thunk_id);
 			markFunctionParameterProcessed(callee, i);
 			thunk_id++;
 		} else if (!isLocalArray(f, str)) {
@@ -831,17 +858,19 @@ void handleCallExpression(FunctionDecl *f, CallExpr *expr, Expr *insertLoc, bool
 					thunkCaller, callString, isExpression);
 			FunctionDecl *callee = expr->getDirectCallee();
 			string thunkText = thunkStruct + thunkBody;
+			int oldThunkID = thunk_id;
 			/* avoid spurious thunk generation */
 			if(isLocalVariable(f, str) || isa<BinaryOperator>(arg)) {
 				insertThunkDefinition(callee, i, thunkText);
 				insertThunkInitialization(callee, expr, i, thunkCaller, insertLoc);
 				thunk_id++;
-			}
+			} else
+				isThunkParam = true;
+			insertThunkCalleeDeclaration(callee, arg, str, i, isExpression, oldThunkID);
 			rewriteFunctionBodyAsThunk(callee, i, isExpression);
 			loc = arg->getEndLoc();
 			TheRewriter.InsertTextAfterToken(loc, callString);
 			//llvm::outs() << "argument: " << str << "\n";
-			insertThunkCalleeDeclaration(callee, arg, str, i, isExpression);
 			markFunctionParameterProcessed(callee, i);
 		} else {
 			string param = str;
@@ -860,7 +889,7 @@ void handleCallExpression(FunctionDecl *f, CallExpr *expr, Expr *insertLoc, bool
 			loc = arg->getEndLoc();
 			rewriteFunctionBodyAsThunk(callee, i, false);
 			TheRewriter.InsertTextAfterToken(loc, callString);
-			insertThunkCalleeDeclaration(callee, arg, str, i, false);
+			insertThunkCalleeDeclaration(callee, arg, str, i, false, thunk_id);
 			markFunctionParameterProcessed(callee, i);
 			thunk_id++;
 		}
@@ -1002,6 +1031,8 @@ bool VisitFunctionDecl(FunctionDecl *f)
 	}
 #endif
 	if (f->hasBody()) {
+		if (topFunc == NULL)
+			topFunc = f;
 		Stmt *FuncBody = f->getBody();
 		int numParams = f->getNumParams();
 
